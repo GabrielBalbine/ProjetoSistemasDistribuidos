@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  broker: # Nosso broker de comandos
+    build:
+      context: ./req-rep
+      dockerfile: Dockerfile_broker
+    container_name: broker
+    ports:
+      - "5555:5555"
+      - "5556:5556"
+
+  proxy: # Nosso proxy de mensagens
+    build:
+      context: ./proxy
+      dockerfile: Dockerfile
+    container_name: proxy
+    command: ["python", "-u", "proxy.py"]
+    ports:
+      - "5557:5557"
+      - "5558:5558"
+
+  servidor:
+    build:
+      context: ./req-rep
+      dockerfile: Dockerfile_servidor
+    container_name: servidor
+    volumes:
+      - ./messages.log:/app/messages.log
+      - ./usuarios.json:/app/usuarios.json
+      - ./canais.json:/app/canais.json
+    depends_on:
+      - broker
+      - proxy
+
+  publisher: # Nossos bots
+    build:
+      context: ./proxy
+      dockerfile: Dockerfile
+    command: ["python", "-u", "publisher.py"]
+    depends_on:
+      - servidor
+    deploy:
+      replicas: 2

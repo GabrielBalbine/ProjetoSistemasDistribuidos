@@ -1,0 +1,6 @@
+FROM python:3.9-slim
+ENV LANG C.UTF-8
+WORKDIR /app
+COPY broker.py /app/main.py
+RUN pip install pyzmq
+CMD ["python", "-u", "main.py"]

@@ -66,3 +66,49 @@ while True:
         elif service == "addChannel":
             channel_nome = data.get("titulo", "").lower()
             if any(c['titulo'] == channel_nome for c in canais.values()):
+                rep_socket.send_string(f"ERRO: Canal '{channel_nome}' já existe.")
+            else:
+                data['titulo'] = channel_nome
+                canais[str(channel_id_counter)] = data
+                channel_id_counter += 1
+                salvar_dados(canais, "canais.json")
+                print(f"Novo canal adicionado: {data}. Total: {len(canais)}")
+                rep_socket.send_string("OK")
+
+        elif service == "listUsers":
+            rep_socket.send_json(usuarios)
+
+        elif service == "listChannels":
+            rep_socket.send_json(canais)
+
+        elif service == "publish":
+            user = data.get("user")
+            channel = data.get("channel", "").lower()
+            if any(c['titulo'] == channel for c in canais.values()):
+                conteudo_publicacao = {"user": user, "message": data.get("message"), "timestamp": data.get("timestamp")}
+                pub_socket.send_string(f"{channel} {json.dumps(conteudo_publicacao, ensure_ascii=False)}")
+                salvar_mensagem(request)
+                reply = {"service": "publish", "data": {"status": "OK", "timestamp": datetime.datetime.now().isoformat()}}
+                rep_socket.send_json(reply)
+            else:
+                reply = {"service": "publish", "data": {"status": "erro", "message": f"Canal '{channel}' não existe.", "timestamp": datetime.datetime.now().isoformat()}}
+                rep_socket.send_json(reply)
+
+        elif service == "message":
+            dst_user = data.get("dst")
+            if any(u['user'] == dst_user for u in usuarios.values()):
+                conteudo_publicacao = {"from": data.get("src"), "message": data.get("message"), "timestamp": data.get("timestamp")}
+                pub_socket.send_string(f"{dst_user} {json.dumps(conteudo_publicacao, ensure_ascii=False)}")
+                salvar_mensagem(request)
+                reply = {"service": "message", "data": {"status": "OK", "timestamp": datetime.datetime.now().isoformat()}}
+                rep_socket.send_json(reply)
+            else:
+                reply = {"service": "message", "data": {"status": "erro", "message": f"Usuário '{dst_user}' não existe.", "timestamp": datetime.datetime.now().isoformat()}}
+                rep_socket.send_json(reply)
+        else:
+            rep_socket.send_string("ERRO: Serviço desconhecido.")
+
+    except Exception as e:
+        print(f"[ERRO] Ocorreu um erro no servidor: {e}")
+        if not rep_socket.closed:
+             rep_socket.send_string(f"ERRO: Erro interno no servidor - {e}")

@@ -2,13 +2,18 @@ import zmq
 import json
 import datetime
 import os
+import hashlib
+import secrets
 
-# --- FUNÇÕES DE PERSISTÊNCIA DE DADOS ---
+# --- FUNÇÕES DE SEGURANÇA E PERSISTÊNCIA ---
+def hash_password(password):
+    """Gera um hash seguro para a senha."""
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
 def carregar_dados(arquivo_json):
     """Carrega dados de um arquivo JSON. Se não existir, estiver vazio ou corrompido, retorna um dict vazio."""
     if not os.path.exists(arquivo_json):
         return {}
-    
     try:
         with open(arquivo_json, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -35,14 +40,15 @@ rep_socket.connect("tcp://broker:5556")
 pub_socket = context.socket(zmq.PUB)
 pub_socket.connect("tcp://proxy:5558")
 
-print("Carregando dados de usuários e canais...")
+print("Carregando dados...")
 usuarios = carregar_dados("usuarios.json")
 canais = carregar_dados("canais.json")
+active_sessions = {}
 
 user_id_counter = max([int(k) for k in usuarios.keys()], default=-1) + 1
 channel_id_counter = max([int(k) for k in canais.keys()], default=-1) + 1
 
-print(f"✅ Servidor iniciado. {len(usuarios)} usuários e {len(canais)} canais carregados.")
+print(f"✅ Servidor iniciado.")
 print("Conectado aos brokers...")
 
 # --- LOOP PRINCIPAL DO SERVIDOR ---
@@ -54,59 +60,84 @@ while True:
         
         if service == "addUser":
             user_nome = data.get("user")
+            senha = data.get("senha")
+            if not user_nome or not senha:
+                rep_socket.send_string("ERRO: Usuário e senha são obrigatórios.")
+                continue
+
             if any(u['user'] == user_nome for u in usuarios.values()):
                 rep_socket.send_string(f"ERRO: Usuário '{user_nome}' já existe.")
             else:
-                usuarios[str(user_id_counter)] = data
+                hashed_password = hash_password(senha)
+                usuarios[str(user_id_counter)] = {"user": user_nome, "password_hash": hashed_password}
                 user_id_counter += 1
                 salvar_dados(usuarios, "usuarios.json")
-                print(f"Novo usuário adicionado: {data}. Total: {len(usuarios)}")
+                print(f"Novo usuário cadastrado: {user_nome}")
                 rep_socket.send_string("OK")
+
+        elif service == "login":
+            user_nome = data.get("user")
+            senha = data.get("senha")
+            user_data = next((u for u in usuarios.values() if u['user'] == user_nome), None)
+            
+            if user_data and user_data['password_hash'] == hash_password(senha):
+                token = secrets.token_hex(16)
+                active_sessions[token] = user_nome
+                print(f"Usuário '{user_nome}' logado com sucesso. Token: {token}")
+                rep_socket.send_json({"status": "OK", "token": token, "user": user_nome})
+            else:
+                print(f"Falha no login para o usuário '{user_nome}'")
+                rep_socket.send_json({"status": "ERRO", "message": "Usuário ou senha inválidos."})
+
+        elif service in ["publish", "message", "addChannel"]:
+            token = data.get("token")
+            user_nome = active_sessions.get(token)
+            
+            if not user_nome:
+                rep_socket.send_json({"status": "ERRO", "message": "Token inválido ou sessão expirada. Faça login."})
+                continue
+            
+            # --- Roteamento de serviços protegidos ---
+            if service == "addChannel":
+                channel_nome = data.get("titulo", "").lower()
+                if any(c['titulo'] == channel_nome for c in canais.values()):
+                    rep_socket.send_json({"status": "ERRO", "message": f"Canal '{channel_nome}' já existe."})
+                else:
+                    data['titulo'] = channel_nome
+                    canais[str(channel_id_counter)] = {"titulo": data['titulo'], "desc": data['desc']}
+                    channel_id_counter += 1
+                    salvar_dados(canais, "canais.json")
+                    print(f"Usuário '{user_nome}' criou o canal: {data['titulo']}")
+                    rep_socket.send_json({"status": "OK"})
+
+            elif service == "publish":
+                channel = data.get("channel", "").lower()
+                if any(c['titulo'] == channel for c in canais.values()):
+                    conteudo_publicacao = {"user": user_nome, "message": data.get("message"), "timestamp": data.get("timestamp")}
+                    pub_socket.send_string(f"{channel} {json.dumps(conteudo_publicacao, ensure_ascii=False)}")
+                    salvar_mensagem(request)
+                    rep_socket.send_json({"status": "OK"})
+                else:
+                    rep_socket.send_json({"status": "ERRO", "message": f"Canal '{channel}' não existe."})
+
+            elif service == "message":
+                dst_user = data.get("dst")
+                if any(u['user'] == dst_user for u in usuarios.values()):
+                    conteudo_publicacao = {"from": user_nome, "message": data.get("message"), "timestamp": data.get("timestamp")}
+                    pub_socket.send_string(f"{dst_user} {json.dumps(conteudo_publicacao, ensure_ascii=False)}")
+                    salvar_mensagem(request)
+                    rep_socket.send_json({"status": "OK"})
+                else:
+                    rep_socket.send_json({"status": "ERRO", "message": f"Usuário '{dst_user}' não existe."})
         
-        elif service == "addChannel":
-            channel_nome = data.get("titulo", "").lower()
-            if any(c['titulo'] == channel_nome for c in canais.values()):
-                rep_socket.send_string(f"ERRO: Canal '{channel_nome}' já existe.")
-            else:
-                data['titulo'] = channel_nome
-                canais[str(channel_id_counter)] = data
-                channel_id_counter += 1
-                salvar_dados(canais, "canais.json")
-                print(f"Novo canal adicionado: {data}. Total: {len(canais)}")
-                rep_socket.send_string("OK")
-
-        elif service == "listUsers":
-            rep_socket.send_json(usuarios)
-
-        elif service == "listChannels":
-            rep_socket.send_json(canais)
-
-        elif service == "publish":
-            user = data.get("user")
-            channel = data.get("channel", "").lower()
-            if any(c['titulo'] == channel for c in canais.values()):
-                conteudo_publicacao = {"user": user, "message": data.get("message"), "timestamp": data.get("timestamp")}
-                pub_socket.send_string(f"{channel} {json.dumps(conteudo_publicacao, ensure_ascii=False)}")
-                salvar_mensagem(request)
-                reply = {"service": "publish", "data": {"status": "OK", "timestamp": datetime.datetime.now().isoformat()}}
-                rep_socket.send_json(reply)
-            else:
-                reply = {"service": "publish", "data": {"status": "erro", "message": f"Canal '{channel}' não existe.", "timestamp": datetime.datetime.now().isoformat()}}
-                rep_socket.send_json(reply)
-
-        elif service == "message":
-            dst_user = data.get("dst")
-            if any(u['user'] == dst_user for u in usuarios.values()):
-                conteudo_publicacao = {"from": data.get("src"), "message": data.get("message"), "timestamp": data.get("timestamp")}
-                pub_socket.send_string(f"{dst_user} {json.dumps(conteudo_publicacao, ensure_ascii=False)}")
-                salvar_mensagem(request)
-                reply = {"service": "message", "data": {"status": "OK", "timestamp": datetime.datetime.now().isoformat()}}
-                rep_socket.send_json(reply)
-            else:
-                reply = {"service": "message", "data": {"status": "erro", "message": f"Usuário '{dst_user}' não existe.", "timestamp": datetime.datetime.now().isoformat()}}
-                rep_socket.send_json(reply)
+        elif service in ["listUsers", "listChannels"]:
+            # Serviços de listagem continuam públicos (não precisam de token)
+            if service == "listUsers":
+                rep_socket.send_json(usuarios)
+            elif service == "listChannels":
+                rep_socket.send_json(canais)
         else:
-            rep_socket.send_string("ERRO: Serviço desconhecido.")
+            rep_socket.send_string(f"ERRO: Serviço '{service}' desconhecido.")
 
     except Exception as e:
         print(f"[ERRO] Ocorreu um erro no servidor: {e}")

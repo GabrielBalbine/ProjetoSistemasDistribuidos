@@ -33,12 +33,11 @@ services:
       - broker
       - proxy
 
-  publisher: # Nossos bots
+  # Opcional: você também pode remover o subscriber de debug se quiser
+  subscriber: 
     build:
       context: ./proxy
       dockerfile: Dockerfile
-    command: ["python", "-u", "publisher.py"]
+    command: ["python", "-u", "subscriber.py"]
     depends_on:
-      - servidor
-    deploy:
-      replicas: 2
+      - proxy

@@ -1,7 +1,5 @@
-version: '3.8'
-
 services:
-  broker: # Nosso broker de comandos
+  broker:
     build:
       context: ./req-rep
       dockerfile: Dockerfile_broker
@@ -10,15 +8,15 @@ services:
       - "5555:5555"
       - "5556:5556"
 
-  proxy: # Nosso proxy de mensagens
-    build:
-      context: ./proxy
-      dockerfile: Dockerfile
-    container_name: proxy
-    command: ["python", "-u", "proxy.py"]
-    ports:
-      - "5557:5557"
-      - "5558:5558"
+  proxy:
+      build:
+        context: ./proxy
+        dockerfile: Dockerfile
+      container_name: proxy
+      command: ["python", "-u", "proxy.py"]
+      ports:
+        - "5557:5557"
+        - "5558:5558"
 
   servidor:
     build:
@@ -33,11 +31,20 @@ services:
       - broker
       - proxy
 
-  # Opcional: você também pode remover o subscriber de debug se quiser
-  subscriber: 
+  bot-go:
     build:
       context: ./proxy
-      dockerfile: Dockerfile
-    command: ["python", "-u", "subscriber.py"]
+      dockerfile: Dockerfile_botgo
     depends_on:
-      - proxy
+      - servidor
+    deploy:
+      replicas: 2
+
+  cliente-js:
+    build:
+      context: ./req-rep
+      dockerfile: Dockerfile_cliente
+    stdin_open: true 
+    tty: true
+    depends_on:
+      - servidor

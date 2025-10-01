@@ -1,9 +1,17 @@
-FROM python:3.13.7-alpine3.21
+# Usa uma imagem oficial do Node.js
+FROM node:18-slim
 
+# Define o diretório de trabalho dentro do container
 WORKDIR /app
 
-RUN pip install pyzmq
+# Copia o package.json para instalar as dependências primeiro (cache do Docker)
+COPY package.json .
 
-COPY ./cliente.py .
+# Roda o comando de instalação DENTRO do container
+RUN npm install
 
-CMD ["python", "cliente.py"]
+# Copia o resto do código do cliente
+COPY cliente.js .
+
+# Comando padrão para rodar quando o container iniciar
+CMD ["node", "cliente.js"]

@@ -1,0 +1,13 @@
+{
+  "name": "cliente-chat",
+  "version": "1.0.0",
+  "description": "Cliente interativo para o sistema de chat",
+  "main": "cliente.js",
+  "scripts": {
+    "start": "node cliente.js"
+  },
+  "dependencies": {
+    "prompt-sync": "^4.2.0",
+    "zeromq": "^6.0.0-beta.19"
+  }
+}

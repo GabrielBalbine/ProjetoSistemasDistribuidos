@@ -1,0 +1,36 @@
+# Estágio 1: Build
+FROM golang:1.24-alpine AS builder
+
+# NOVO: Instala as dependências do C (compilador e a biblioteca libzmq)
+# build-base nos dá o compilador C, e zeromq-dev nos dá a libzmq.
+RUN apk add --no-cache build-base zeromq-dev
+
+WORKDIR /app
+
+# Copia os arquivos de módulo primeiro para aproveitar o cache do Docker
+COPY go.mod ./
+COPY go.sum ./
+
+# Baixa as dependências do Go
+RUN go mod download
+
+# Agora copia o resto do código fonte
+COPY bot.go .
+
+# Compila o código. CGO está ATIVADO por padrão. Removemos a flag que o desabilitava.
+RUN go build -o /bot-go-app .
+
+# Estágio 2: Imagem Final
+# Usamos alpine em vez de scratch porque nosso programa compilado precisa da biblioteca libzmq para rodar.
+FROM alpine:latest
+
+# Instala apenas a biblioteca de tempo de execução do zeromq, que é bem pequena.
+RUN apk add --no-cache zeromq
+
+WORKDIR /app
+
+# Copia APENAS o binário compilado do estágio de build
+COPY --from=builder /bot-go-app .
+
+# Comando para rodar o bot
+CMD ["./bot-go-app"]

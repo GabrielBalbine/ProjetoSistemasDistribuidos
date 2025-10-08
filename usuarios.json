@@ -1,14 +1,6 @@
 {
     "0": {
-        "user": "joaquim",
-        "password_hash": "159e08e6d700a5c92954a5cd1197530adee8034bc82dd98502727d045e400069"
-    },
-    "1": {
-        "user": "teste",
-        "password_hash": "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
-    },
-    "2": {
-        "user": "Jorge da 12",
+        "user": "Jorge",
         "password_hash": "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
     }
 }

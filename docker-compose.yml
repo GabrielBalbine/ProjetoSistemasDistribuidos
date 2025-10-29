@@ -1,7 +1,3 @@
-# docker-compose.yml (Versão Final com Bind Mount)
-
-# A seção 'volumes:' no topo NÃO é mais necessária, pode apagar.
-
 services:
   broker:
     build: { context: ./req-rep, dockerfile: Dockerfile_broker }
@@ -23,7 +19,6 @@ services:
       - TOTAL_SERVERS=3
       - PYTHONUNBUFFERED=1
     volumes:
-      # CORREÇÃO: Mapeia a pasta local para a pasta interna do container
       - ./shared_data:/app/election
 
   servidor-2:
@@ -35,7 +30,6 @@ services:
       - TOTAL_SERVERS=3
       - PYTHONUNBUFFERED=1
     volumes:
-      # CORREÇÃO: Todos apontam para a MESMA pasta local
       - ./shared_data:/app/election
 
   servidor-3:
@@ -47,7 +41,6 @@ services:
       - TOTAL_SERVERS=3
       - PYTHONUNBUFFERED=1
     volumes:
-      # CORREÇÃO: Assim, todos compartilham o mesmo "chão"
       - ./shared_data:/app/election
 
   bot-go:

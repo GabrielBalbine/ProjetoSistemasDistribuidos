@@ -4,11 +4,15 @@
         "desc": "Canal geral criado por bot"
     },
     "1": {
-        "titulo": "resiliencia ",
+        "titulo": "resiliencia",
         "desc": "nao sei"
     },
     "2": {
         "titulo": "festa_buzeira",
         "desc": "roubos_e_furtos"
+    },
+    "3": {
+        "titulo": "testando",
+        "desc": "RELOGIO LAMPORT"
     }
 }

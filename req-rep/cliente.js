@@ -1,216 +1,223 @@
+// cliente_completo.js (CommonJS) - versão compatível com servidor corrigido
 const zmq = require("zeromq");
 const prompt = require("prompt-sync")({ sigint: true });
 const { setTimeout } = require("timers/promises");
 
-let subSocket;
+// Endereços
+const REQ_ADDR = "tcp://broker:5555";
+const SUB_ADDR = "tcp://proxy:5557";
+let subSocket = null;
+
+// Lamport clock
 let lamportClock = 0;
+function incClock() { lamportClock++; return lamportClock; }
+function updateClock(received) { lamportClock = Math.max(lamportClock, Number(received) || 0) + 1; return lamportClock; }
 
-async function messageListener(userName) {
-    console.log(`\n✅ Audição iniciada para o usuário '${userName}'.`);
-    subSocket = new zmq.Subscriber();
-    subSocket.connect("tcp://proxy:5557");
-    subSocket.subscribe(userName);
+// Estado do cliente
+let currentUser = null;
+let sessionToken = null;
+let isBot = false;
 
-    for await (const [topic, msg] of subSocket) {
-        try {
-            const payload = JSON.parse(msg.toString());
-            const receivedLamportClock = payload.lamport_clock || 0;
+// Listener assíncrono de mensagens
+async function messageListener(userName, autoSubscribe = false) {
+  subSocket = new zmq.Subscriber();
+  subSocket.connect(SUB_ADDR);
+  subSocket.subscribe(userName); // sempre recebe DMs
 
-            lamportClock = Math.max(lamportClock, receivedLamportClock) + 1;
-            console.log(`\n[CLOCK] Pub recebida! Clock da msg: ${receivedLamportClock}, meu clock atualizado: ${lamportClock}`);
+  if (autoSubscribe) {
+    console.log("🤖 Bot detectado: inscrito em todos os canais por padrão.");
+  }
 
-            process.stdout.write('\r' + ' '.repeat(80) + '\r');
-            if (payload.from) {
-                console.log(`📩  [Mensagem de ${payload.from}]: ${payload.message}`);
-            } else {
-                console.log(`📢  [${topic.toString()}] ${payload.user}: ${payload.message}`);
-            }
-            process.stdout.write(`[${userName}] Digite uma opção: `);
-        } catch (e) {
-            // Ignore mensagens mal formatadas ou vazias
-        }
-    }
+  for await (const [topicBuf, msgBuf] of subSocket) {
+    try {
+      const topic = topicBuf.toString();
+      const payload = JSON.parse(msgBuf.toString());
+      const receivedLamport = payload.lamport_clock || 0;
+      updateClock(receivedLamport);
+
+      process.stdout.write('\r' + ' '.repeat(80) + '\r');
+      if (payload.from) {
+        console.log(`📩 [DM de ${payload.from}]: ${payload.message}`);
+      } else if (payload.user) {
+        console.log(`📢 [${topic}] ${payload.user}: ${payload.message}`);
+      } else {
+        console.log(`🔔 [${topic}] ${JSON.stringify(payload)}`);
+      }
+      process.stdout.write(`[${userName}] > `);
+    } catch (_) {}
+  }
 }
 
+// Função helper para enviar requests via REQ/REP
+async function sendRequest(reqSocket, service, data = {}) {
+  incClock();
+  const request = { service, data: { ...data, lamport_clock: lamportClock } };
+  await reqSocket.send(JSON.stringify(request));
+  const [replyBuf] = await reqSocket.receive();
+  let reply = {};
+  try {
+    reply = JSON.parse(replyBuf.toString());
+  } catch {
+    reply = replyBuf.toString();
+  }
+  updateClock(reply.lamport_clock || 0);
+  return reply;
+}
+
+// Menu principal (login e registro)
+async function main() {
+  const reqSocket = new zmq.Request();
+  reqSocket.connect(REQ_ADDR);
+
+  while (true) {
+    console.log("\n--- CLIENTE INTERATIVO ---");
+    console.log("1. Login");
+    console.log("2. Cadastrar novo usuário");
+    console.log("3. Sair");
+    const choice = prompt("Escolha: ");
+
+    incClock();
+    let request = { data: { lamport_clock: lamportClock } };
+
+    if (choice === '1' || choice === '2') {
+      request.data.user = prompt("Usuário: ");
+      request.data.senha = prompt("Senha: ", { echo: '' });
+      request.service = choice === '1' ? 'login' : 'addUser';
+
+      try {
+        await reqSocket.send(JSON.stringify(request));
+        const [replyBuf] = await reqSocket.receive();
+        const res = JSON.parse(replyBuf.toString());
+        updateClock(res.lamport_clock || 0);
+
+        if (choice === '1') {
+          if (res.status === "OK") {
+            console.log("✅ Login realizado com sucesso!");
+            currentUser = res.user;
+            sessionToken = res.token;
+            isBot = currentUser.startsWith("bot-");
+            messageListener(currentUser, isBot).catch(e => console.error("Listener error:", e));
+            await mainApp(currentUser, sessionToken, reqSocket);
+            break;
+          } else console.log(`❌ Falha: ${res.message}`);
+        } else {
+          if (res.status === "OK") console.log("✅ Usuário cadastrado! Faça login agora.");
+          else console.log(`❌ ${res.message}`);
+        }
+      } catch (e) {
+        console.error("Erro na comunicação com o servidor:", e);
+      }
+
+    } else if (choice === '3') {
+      console.log("Saindo...");
+      process.exit(0);
+    } else {
+      console.log("Opção inválida.");
+    }
+  }
+}
+
+// Função pós-login
 async function mainApp(user_nome, session_token, reqSocket) {
-    messageListener(user_nome);
-    await setTimeout(500);
+  await setTimeout(200);
 
-    let opcao = "";
-    while (opcao !== "sair") {
-        opcao = prompt(`[${user_nome}] Digite uma opção (ou 'ajuda'): `);
-        if (!opcao) continue;
+  console.log("\n--- Bem-vindo ao sistema ---");
+  console.log("Digite 'ajuda' para ver os comandos disponíveis.\n");
 
-        const [command, ...args] = opcao.toLowerCase().split(' ');
+  while (true) {
+    const opcao = prompt(`[${user_nome}] > `);
+    if (!opcao) continue;
+    const [command, ...args] = opcao.toLowerCase().split(' ');
 
-        lamportClock++;
-        let request = { data: { token: session_token, lamport_clock: lamportClock } };
+    incClock();
+    let request = { data: { token: session_token, user: user_nome, lamport_clock: lamportClock } };
 
-        if (command === 'sair') {
-            console.log("Deslogando e encerrando...");
-            break;
+    if (command === 'sair') {
+      console.log("👋 Encerrando...");
+      process.exit(0);
 
-        } else if (command === 'ajuda') {
-            console.log("\n--- MENU DE OPÇÕES ---\n" +
-                "listar_canais    - Lista todos os canais\n" +
-                "listar_user      - Lista todos os usuários\n" +
-                "add_canal       - Adiciona um novo canal\n" +
-                "inscrever [canal] - Inscreve você em um canal\n" +
-                "publicar [canal]  - Publica uma mensagem em um canal\n" +
-                "mensagem [user]   - Envia uma mensagem direta\n" +
-                "sync_time        - Compara a hora com o Coordenador\n" +
-                "sair             - Encerra o cliente\n" +
-                "----------------------");
+    } else if (command === 'ajuda') {
+      console.log("\nComandos disponíveis:");
+      console.log("listar_canais            - Lista canais");
+      console.log("listar_user              - Lista usuários");
+      console.log("add_canal                - Cria novo canal");
+      console.log("inscrever <canal>        - Inscreve-se num canal");
+      console.log("publicar <canal>         - Publica mensagem num canal inscrito");
+      console.log("mensagem <user>          - Envia mensagem direta");
+      console.log("sync_time                - Sincroniza relógio");
+      console.log("sair                     - Fecha o cliente");
+      console.log("ajuda                    - Mostra este menu\n");
 
-        } else if (command === 'listar_canais' || command === 'sync_time' || command === 'listar_user') {
-            if (command === 'listar_canais') request.service = 'listChannels';
-            else if (command === 'listar_user') request.service = 'listUsers';
-            else request.service = 'getTime';
+    } else if (command === 'listar_canais' || command === 'listar_user' || command === 'sync_time') {
+      request.service = command === 'listar_canais' ? 'listChannels' :
+                        command === 'listar_user' ? 'listUsers' : 'getTime';
 
-            await reqSocket.send(JSON.stringify(request));
-            const [reply] = await reqSocket.receive();
-
-            try {
-                const res = JSON.parse(reply.toString());
-
-                if (command === 'listar_canais') {
-                    console.log("\n--- Canais Disponíveis ---");
-                    for (const id in res) console.log(` -> ${res[id].titulo}`);
-                    console.log("------------------------");
-                } else if (command === 'listar_user') {
-                    console.log("\n--- Usuários Cadastrados ---");
-                    for (const id in res) console.log(` -> ${res[id].user}`);
-                    console.log("----------------------------");
-                } else { // sync_time
-                    console.log("\n--- Sincronização de Relógio ---");
-                    console.log(`Hora do Coordenador (UTC): ${res.server_time_utc}`);
-                    console.log(`Sua Hora Local (Cliente):      ${new Date().toISOString()}`);
-                    console.log("------------------------------");
-                }
-                lamportClock = Math.max(lamportClock, res.lamport_clock || 0) + 1;
-
-            } catch (e) {
-                console.error("Resposta inesperada do servidor:", reply.toString());
-            }
-
-        } else if (command === 'add_canal') {
-            request.service = "addChannel";
-            request.data.titulo = prompt("Nome do novo canal: ").toLowerCase();
-            request.data.desc = prompt("Descrição do canal: ");
-            await reqSocket.send(JSON.stringify(request));
-            const [reply] = await reqSocket.receive();
-
-            try {
-                const res = JSON.parse(reply.toString());
-                if (res.status === "OK") console.log("✅ Canal adicionado com sucesso!");
-                else console.log(`❌ Erro: ${res.message}`);
-                lamportClock = Math.max(lamportClock, res.lamport_clock || 0) + 1;
-            } catch (e) {
-                console.error("Resposta inesperada do servidor:", reply.toString());
-            }
-
-        } else if (command === 'inscrever') {
-            const channelName = args[0];
-            if (!channelName) console.log("❌ Use: inscrever <nome_do_canal>");
-            else {
-                subSocket.subscribe(channelName.toLowerCase());
-                console.log(`✅ Inscrito com sucesso no canal '${channelName.toLowerCase()}'`);
-            }
-
-        } else if (command === 'publicar' || command === 'mensagem') {
-            const target = args[0];
-            if (!target) {
-                console.log(`❌ Use: ${command} <alvo>`);
-            } else {
-                if (command === 'publicar') {
-                    request.service = 'publish';
-                    request.data.channel = target.toLowerCase();
-                } else { // mensagem
-                    request.service = 'message';
-                    request.data.dst = target;
-                }
-                request.data.message = prompt(`Mensagem para '${target}': `);
-                request.data.timestamp = new Date().toISOString();
-
-                await reqSocket.send(JSON.stringify(request));
-                const [reply] = await reqSocket.receive();
-
-                try {
-                    const res = JSON.parse(reply.toString());
-
-                    if (res.status === "OK") {
-                        console.log("✅ Mensagem enviada.");
-                        lamportClock = Math.max(lamportClock, res.lamport_clock || 0) + 1;
-                        console.log(`[CLOCK] Resposta recebida. Meu clock atualizado: ${lamportClock}`);
-                    } else {
-                        console.log(`❌ Erro: ${res.message}`);
-                    }
-                } catch (e) {
-                    console.error("Resposta inesperada do servidor:", reply.toString());
-                }
-            }
-
+      try {
+        const res = await sendRequest(reqSocket, request.service, request.data);
+        if (command === 'listar_canais') {
+          console.log("\n--- Canais ---");
+          Object.values(res).forEach(c => c.titulo && console.log("→", c.titulo));
+        } else if (command === 'listar_user') {
+          console.log("\n--- Usuários ---");
+          Object.values(res).forEach(u => u.user && console.log("→", u.user));
         } else {
-            if (opcao) console.log("Comando inválido. Digite 'ajuda'.");
+          console.log("\n--- Relógio ---");
+          console.log(`Servidor: ${res.server_time_utc}`);
+          console.log(`Local:    ${new Date().toISOString()}`);
         }
+      } catch (e) { console.error("Erro:", e); }
+
+    } else if (command === 'add_canal') {
+      request.service = 'addChannel';
+      request.data.titulo = prompt("Nome do canal: ").toLowerCase();
+      request.data.desc = prompt("Descrição: ");
+      const res = await sendRequest(reqSocket, 'addChannel', request.data);
+      if (res.status === "OK") {
+        console.log("✅ Canal criado!");
+        // bots se inscrevem automaticamente
+        if (isBot && subSocket) subSocket.subscribe(request.data.titulo);
+      } else console.log("❌", res.message);
+
+    } else if (command === 'inscrever') {
+      const canal = args[0];
+      if (!canal) return console.log("❌ Use: inscrever <canal>");
+      const res = await sendRequest(reqSocket, 'subscribe', { ...request.data, channel: canal });
+      if (res.status === "OK") {
+        console.log(`✅ ${res.message}`);
+        if (subSocket) subSocket.subscribe(canal);
+      } else console.log(`❌ ${res.message}`);
+
+    } else if (command === 'publicar') {
+      const canal = args[0];
+      if (!canal) return console.log("❌ Use: publicar <canal>");
+      const mensagem = prompt("Mensagem: ");
+      const res = await sendRequest(reqSocket, 'publish', {
+        ...request.data,
+        channel: canal,
+        message: mensagem,
+        timestamp: new Date().toISOString()
+      });
+      if (res.status === "OK") console.log("✅ Mensagem publicada!");
+      else console.log("❌", res.message);
+
+    } else if (command === 'mensagem') {
+      const dst = args[0];
+      if (!dst) return console.log("❌ Use: mensagem <user>");
+      const mensagem = prompt("Mensagem: ");
+      const res = await sendRequest(reqSocket, 'message', {
+        ...request.data,
+        dst,
+        message: mensagem,
+        timestamp: new Date().toISOString()
+      });
+      if (res.status === "OK") console.log("✅ Mensagem enviada!");
+      else console.log("❌", res.message);
+
+    } else {
+      console.log("Comando inválido. Digite 'ajuda'.");
     }
+  }
 }
 
-async function start() {
-    const reqSocket = new zmq.Request();
-    reqSocket.connect("tcp://broker:5555");
-
-    while (true) {
-        console.log("\n--- BEM-VINDO (Cliente Node.js) ---");
-        console.log("1. Login");
-        console.log("2. Cadastrar novo usuário");
-        console.log("3. Sair");
-        const choice = prompt("Escolha uma opção: ");
-
-        lamportClock++;
-        let request = { data: { lamport_clock: lamportClock } };
-
-        if (choice === '1' || choice === '2') {
-            request.data.user = prompt("Usuário: ");
-            request.data.senha = prompt("Senha: ", { echo: '' }); // senha oculta
-
-            request.service = choice === '1' ? 'login' : 'addUser';
-            await reqSocket.send(JSON.stringify(request));
-            const [reply] = await reqSocket.receive();
-
-            try {
-                const res = JSON.parse(reply.toString());
-                lamportClock = Math.max(lamportClock, res.lamport_clock || 0) + 1;
-
-                if (choice === '1') {
-                    if (res.status === "OK") {
-                        console.log("✅ Login realizado com sucesso!");
-                        await mainApp(res.user, res.token, reqSocket);
-                        break;
-                    } else {
-                        console.log(`❌ Falha no login: ${res.message}`);
-                    }
-                } else { // choice === '2'
-                    if (res.status === "OK") {
-                        console.log("\n✅ Usuário cadastrado com sucesso! Agora você pode fazer o login.");
-                    } else {
-                        console.log(`\n❌ ${res.message || res}`);
-                    }
-                }
-            } catch (e) {
-                console.error("Resposta inesperada do servidor:", reply.toString());
-            }
-
-        } else if (choice === '3') {
-            break;
-
-        } else {
-            console.log("Opção inválida.");
-        }
-    }
-
-    console.log("\nPrograma encerrado. Até logo!");
-    process.exit(0);
-}
-
-start();
+// Início
+main().catch(e => console.error("Erro fatal:", e));

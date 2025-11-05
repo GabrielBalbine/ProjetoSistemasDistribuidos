@@ -16,10 +16,10 @@ Este é um projeto de um sistema de chat em tempo real, polyglot (Python, Go, No
     * **Publisher-Subscriber:** Para a distribuição de mensagens em tempo real.
 * **Conceitos Implementados:**
     * **Eleição de Coordenador:** Baseado no **Algoritmo do Valentão (Bullying)**, adaptado para um mecanismo robusto de **Lock File** em um volume compartilhado para evitar condições de corrida e "Split-Brain"[cite: 224, 226].
-    *  **Exclusão Mútua Centralizada:** O Líder eleito atua como um Coordenador central que gerencia o acesso aos recursos compartilhados (criação de canais, etc.)[cite: 50, 53].
+    *  **Exclusão Mútua Centralizada:** O Líder eleito atua como um Coordenador central que gerencia o acesso aos recursos compartilhados (criação de canais, etc.).
     * **Sincronização de Relógios:**
-        *  **Relógios Lógicos (Lamport):** Implementado para garantir a ordem causal dos eventos[cite: 335, 347].
-        *  **Referência de Tempo (Berkeley):** O Líder atua como uma fonte de tempo de referência que os clientes podem consultar[cite: 199, 201].
+        *  **Relógios Lógicos (Lamport):** Implementado para garantir a ordem causal dos eventos.
+        *  **Referência de Tempo (Berkeley):** O Líder atua como uma fonte de tempo de referência que os clientes podem consultar].
 
 ## 📐 Arquitetura
 

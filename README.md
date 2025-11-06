@@ -14,7 +14,7 @@ Este é um projeto de um sistema de chat em tempo real, polyglot (Python, Go, Ja
 * **Comunicação com ZeroMQ:** Utiliza dois padrões de comunicação distintos:
     * **Request-Reply:** Para comandos e operações síncronas.
     * **Publisher-Subscriber:** Para a distribuição de mensagens em tempo real.
-* **Conceitos Implementados (Conforme Rubrica):**
+* **Conceitos Implementados:**
     * **Relógios Lógicos (Lamport):** Cada requisição e resposta incrementa e sincroniza um contador de Lamport, garantindo a ordem causal dos eventos.
     * **Sincronização de Relógio (Berkeley):** O Líder atua como um Coordenador de tempo (`getTime`), permitindo que os clientes comparem seu relógio com o do servidor.
     * **Eleição de Coordenador:** Implementa o **Algoritmo do Valentão** adaptado para um mecanismo robusto de **Lock File** em um volume compartilhado, prevenindo "Split-Brain".

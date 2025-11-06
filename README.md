@@ -1,6 +1,6 @@
 # Sistema de Chat Distribuído com Alta Disponibilidade
 
-Este é um projeto de um sistema de chat em tempo real, polyglot (Python, Go, Node.js), construído sobre uma arquitetura de microsserviços tolerante a falhas. A aplicação utiliza ZeroMQ, Docker Compose e implementa conceitos avançados de sistemas distribuídos, como eleição de coordenador, replicação de estado e consistência.
+Este é um projeto de um sistema de chat em tempo real, polyglot (Python, Go, JavaScript), construído sobre uma arquitetura de microsserviços tolerante a falhas. A aplicação utiliza ZeroMQ, Docker Compose e implementa conceitos avançados de sistemas distribuídos, como eleição de coordenador, replicação de estado e consistência.
 
 ## ✨ Features
 
@@ -8,7 +8,7 @@ Este é um projeto de um sistema de chat em tempo real, polyglot (Python, Go, No
 * **Replicação de Estado:** O estado do sistema (usuários, canais) é replicado em um volume compartilhado (`election-data`), permitindo que um novo líder assuma o trabalho instantaneamente sem perda de dados.
 * **Arquitetura Polyglot:** Demonstra a interoperabilidade entre diferentes linguagens:
     * **Servidor (Python):** O cérebro da aplicação, com a lógica de negócio e eleição.
-    * **Cliente Interativo (Node.js):** Interface de linha de comando para usuários.
+    * **Cliente Interativo (JavaScript):** Interface de linha de comando para usuários.
     * **Bot Automatizado (Go):** Cliente não-humano que gera tráfego e é resiliente a falhas.
 * **Segurança:** Implementa cadastro e login de usuários com hashing de senhas (`SHA256`) e sessões **stateless** (sem estado) via **JSON Web Tokens (JWT)**, permitindo que a autenticação funcione perfeitamente mesmo após a troca de líder.
 * **Comunicação com ZeroMQ:** Utiliza dois padrões de comunicação distintos:
@@ -27,13 +27,13 @@ O sistema é orquestrado pelo Docker Compose e se baseia em um cluster de servid
 1.  **Cluster de Servidores:** Múltiplas instâncias (`servidor-1`, `2`, `3`) competem pela liderança. Apenas o **Líder** se conecta aos brokers de trabalho e processa as requisições. Os **Seguidores** monitoram o líder.
 2.  **Volume Compartilhado (`election-data`):** Atua como a fonte única da verdade para a eleição (através do `leader.lock`) e para o estado do sistema (`usuarios.json`, `canais.json`, `messages.log`).
 3.  **Brokers ZeroMQ:** Dois brokers desacoplam a comunicação: um `ROUTER/DEALER` para comandos e um `XPUB/XSUB` para mensagens em tempo real.
-4.  **Clientes (Node.js e Go):** Clientes resilientes que sabem lidar com a falha temporária do líder, usando um `timeout` e tentando novamente.
+4.  **Clientes (JavaScript e Go):** Clientes resilientes que sabem lidar com a falha temporária do líder, usando um `timeout` e tentando novamente.
 
 ```mermaid
 graph TD
     %% --- Clientes ---
     subgraph Clientes
-        A[Cliente Interativo Node.js]
+        A[Cliente Interativo JavaScript]
         B[Bot Automatizado Go]
     end
 

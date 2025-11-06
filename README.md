@@ -108,7 +108,7 @@ graph TD
     ```
     *Siga as instruções para se cadastrar e fazer login.*
 
-## 🔬 Como Testar a Alta Disponibilidade (O "Teste da Sacanagem")
+## 🔬 Como Testar a Alta Disponibilidade
 
 1.  Com o sistema rodando, use o cliente para criar um usuário (`userA`) e um canal (`canal-teste`).
 2.  Nos logs do `docker compose`, identifique qual servidor é o LÍDER (ex: `servidor-3-1`).

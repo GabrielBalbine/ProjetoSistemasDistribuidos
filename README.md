@@ -1,4 +1,4 @@
-# Sistema de Chat Distribuído com Alta Disponibilidade
+# Sistema de Chat Distribuído
 
 Este é um projeto de um sistema de chat em tempo real, polyglot (Python, Go, JavaScript), construído sobre uma arquitetura de microsserviços tolerante a falhas. A aplicação utiliza ZeroMQ, Docker Compose e implementa conceitos avançados de sistemas distribuídos, como eleição de coordenador, replicação de estado e consistência.
 

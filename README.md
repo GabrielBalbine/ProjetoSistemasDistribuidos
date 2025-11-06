@@ -122,4 +122,4 @@ graph TD
 6.  **Teste a Replicação:** O comando `listar_canais` **deve funcionar** e **mostrar o `canal-teste`** que você criou com o líder antigo. Tente fazer login com o `userA` em outro cliente: **deve funcionar**, provando que os dados foram 100% replicados.
 
 ---
-Criado por: **Gabriel Balbine** - Outubro de 2025
+Criado por: **Gabriel Balbine** - Novembro de 2025
